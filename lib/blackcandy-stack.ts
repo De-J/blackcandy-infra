@@ -7,13 +7,21 @@ export class BlackcandyStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
-    const vpc = ec2.Vpc.fromLookup(this, 'defaultVpc', {
-      vpcId: process.env.VPC_ID
+    const vpc = new ec2.Vpc(this, 'BlackcandyVPC', {
+      maxAzs: 1,
+      natGateways: 0,
+      subnetConfiguration: [
+        {
+          cidrMask: 24,
+          name: 'Public',
+          subnetType: ec2.SubnetType.PUBLIC
+        }
+      ]
     });
 
     const securityGroup = new ec2.SecurityGroup(
       this,
-      'blackcandySG',
+      'BlackcandySG',
       {
         vpc,
         allowAllOutbound: true,
@@ -35,11 +43,14 @@ export class BlackcandyStack extends Stack {
     const keyPair = ec2.KeyPair.fromKeyPairName(
       this,
       'KeyPair',
-      process.env.KEY_PAIR ?? ''
+      'blackcandy-key-pair'
     );
 
     const ec2Instance = new ec2.Instance(this, 'blackcandy', {
       vpc,
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PUBLIC,
+      },
       securityGroup,
       instanceType: ec2.InstanceType.of(
         ec2.InstanceClass.BURSTABLE2,
@@ -49,7 +60,7 @@ export class BlackcandyStack extends Stack {
         generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2023,
       }),
       keyPair,
-    })
+    });
 
   }
 }
