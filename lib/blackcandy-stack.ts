@@ -36,7 +36,7 @@ export class BlackcandyStack extends Stack {
 
     securityGroup.addIngressRule(
       ec2.Peer.anyIpv4(),
-      ec2.Port.tcp(80),
+      ec2.Port.tcp(3000),
       'Allow HTTP traffic from anywhere',
     )
 
@@ -53,8 +53,8 @@ export class BlackcandyStack extends Stack {
       },
       securityGroup,
       instanceType: ec2.InstanceType.of(
-        ec2.InstanceClass.BURSTABLE2,
-        ec2.InstanceSize.MICRO,
+        ec2.InstanceClass.BURSTABLE3,
+        ec2.InstanceSize.MEDIUM,
       ),
       machineImage: new ec2.AmazonLinuxImage({
         generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2023,
@@ -62,5 +62,34 @@ export class BlackcandyStack extends Stack {
       keyPair,
     });
 
+    ec2Instance.addUserData(`
+      #!/bin/bash
+      yum install -y docker
+      systemctl start docker
+      
+      echo "Download and un-zip latest blackcandy version"
+      wget -O /blackcandy.tar.gz ${process.env.BLACKCANDY_LATEST_RELEASE_URL}
+      tar -xzvf /blackcandy.tar.gz
+
+      echo "Replace default email and password"
+      DIR=$(find / -maxdepth 1 -type d -name "*blackcandy*")
+      echo 'User.create(email: "${process.env.BLACKCANDY_EMAIL}", password: "${process.env.BLACKCANDY_PASSWORD}", is_admin: true)' > $DIR/db/seeds.rb
+
+      echo "Make a directory to copy music using scp"
+      mkdir /home/ec2-user/media_data/music
+      
+      echo "Build and run docker image"
+      docker build -t blackcandy-built $DIR
+      docker run -d --name blackcandy \
+        -v /home/ec2-user/media_data/music:/media_data \
+        -e MEDIA_PATH=/media_data \
+        -p 3000:3000 \
+        blackcandy-built
+        
+      echo "Cleanup"
+      rm /blackcandy.tar.gz
+      rm -rf $DIR
+      `
+    )
   }
 }
